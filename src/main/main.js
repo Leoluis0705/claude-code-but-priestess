@@ -211,6 +211,39 @@ function movePopoverTo(point = {}) {
   return { x, y };
 }
 
+function isExternalUrl(url) {
+  return /^https?:\/\//i.test(String(url || ""));
+}
+
+function isTrustedAppUrl(url) {
+  try {
+    return new URL(url).protocol === "file:";
+  } catch {
+    return false;
+  }
+}
+
+function installNavigationGuards(window) {
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternalUrl(url)) {
+      shell.openExternal(url).catch((error) => {
+        console.warn("main: failed to open external URL", error);
+      });
+    }
+    return { action: "deny" };
+  });
+
+  window.webContents.on("will-navigate", (event, url) => {
+    if (isTrustedAppUrl(url)) return;
+    event.preventDefault();
+    if (isExternalUrl(url)) {
+      shell.openExternal(url).catch((error) => {
+        console.warn("main: failed to open external URL", error);
+      });
+    }
+  });
+}
+
 function createPopover() {
   const size = initialPopoverSize();
   popover = new BrowserWindow({
@@ -253,6 +286,7 @@ function createPopover() {
   // top. The popover still only disappears when the tray icon is clicked
   // again (no blur-to-hide handler), so it doesn't vanish on focus change.
 
+  installNavigationGuards(popover);
   popover.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
 
   popover.on("resize", scheduleSavePopoverSize);
@@ -358,6 +392,7 @@ function createDesktopPet() {
       nodeIntegration: false
     }
   });
+  installNavigationGuards(desktopPet);
   desktopPet.loadFile(path.join(__dirname, "..", "renderer", "desktop-pet.html"));
   desktopPet.on("closed", () => {
     desktopPet = null;
